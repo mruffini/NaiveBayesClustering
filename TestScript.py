@@ -36,7 +36,7 @@ print "KMeans Accuracy:",  adjusted_rand_score(KMeans(k).fit(X).labels_,CL)
 
 N = 10000           #N is the sample size
 n1 = 200            #n1 is the number of Poisson features
-n2 = 200            #n2 is the number of Bernoulli features
+n2 = 10            #n2 is the number of Bernoulli features
 k = 36              #k is the number of clusters
 
 #Random data generation. X is the dataset, TrueCL the true clusters
