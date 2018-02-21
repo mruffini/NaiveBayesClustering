@@ -1,23 +1,20 @@
 # NaiveBayseClustering
 
-Python implementation of the algorithms to perform Naive Bayes Clustering using the three views approach.
+Python implementation of the algorithms to perform Naive Bayes Clustering using approximate method of moments.
 
-Based on SVTD, described here
+Based on ASVTD, described here
 
-    https://arxiv.org/abs/1612.03409
+    http://proceedings.mlr.press/v68/ruffini17a/ruffini17a.pdf
 
 ## Content of the project:
 
 ### RandomDataGenerator.py
 
-A module that allows the user to generate synthetic Naive Bayes Models with:
-- Bernoulli outcomes
-- Poisson outcomes
-- Mixed Bernoulli - Poisson outcomes
+A module that allows the user to generate synthetic Naive Bayes Models with Bernoulli outcomes
 
 ### CoreFunctions.py
 
-A module that contains the core functions to perform clustering
+A module that contains the core functions 
 
 
 ### TestScript.py

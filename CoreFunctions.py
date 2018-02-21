@@ -6,179 +6,114 @@ Core functions to perform clustering
 ## Imports
 #######################################################################
 import numpy as np
+import numexpr as ne
 #######################################################################
 ## Learning functions
 #######################################################################
 
 
-def NaiveBayesClustering(X,k):
+def NaiveBayesClustering(X,k,Eps = 0.01):
     """
     Performs clustering of the dataset
     @param X: the dataset
     @param k: the number of clusters
+    @param Eps: The stopping criterion for EM
     """
 
     #First calculate the parameters of the model
-    M,P = LearnNBM(X,k)
+    M,omega = ASVTD(X, k)
 
-    #Use the parameters to perform naive bayes clustering
-    CL = PerformClustering(M,X)
+    #Use the plugs the parameters into EM
+    M, omega, assignment = EM(X,M,omega)
+    #From EM obtains the clustering
+    CL = np.argmax(assignment,1)
 
-    return CL
+    return M,omega,CL
 
-def LearnNBM(X, k):
+
+
+def ASVTD(X, k):
     """
-    Returns the parameters of the NBM generating the data
+    Learn an approximate pair M, omega
     @param X: the dataset
     @param k: the number of clusters
     """
-
     N, n = X.shape
-    E = np.mean(X,0)
-    ML = np.zeros([n,k])
+    E = np.sum(X, 0) / N
+    u,s,v = np.linalg.svd(np.transpose(X).dot(X) / N)
+    u = u[:,:k].dot((np.diag(np.sqrt(s[:k]))))
+    pu = np.linalg.pinv(u)
+    Z = pu.dot(X.T)
 
-    n1 = int(n/3)
-    n2 = int(2*n/3)
+    HMin = 0
+    H = []
+    M = np.zeros([n, k])
 
-    X1 = X[:,:n1]
-    X2 = X[:,n1:n2]
-    X3 = X[:,n2:]
+    for i in range(0, n):
+        Y = X[:, i].reshape((N, 1))
+        H.append((Z*Y.T).dot(Z.T)/N)
 
-    M2 = np.transpose(X).dot(X) / N
-    M2[range(n),range(n)] = Get_DiagM2(X1,X2,X3,k)
-
-    u, s, v = np.linalg.svd(M2)
-    u = u[:,:k]
-    s = s[:k]
-    pu1 = np.linalg.pinv((u.dot(np.diag(np.sqrt(s))))[:n1,:])
-    pu2 = np.linalg.pinv((u.dot(np.diag(np.sqrt(s))))[n1:n2,:])
-    pu3 = np.linalg.pinv((u.dot(np.diag(np.sqrt(s))))[n2:,:])
-
-    H, O, HMin = Get_H(X3, X2, X1, k, pu1, H = [])
-    H, O, HMin = Get_H(X1, X3, X2, k, pu2, H = H, HMin = HMin, O = O)
-    H, O, HMin = Get_H(X1, X2, X3, k, pu3, H = H, HMin = HMin, O = O)
-
-    for i in range(0, len(H)):
-        s = np.diag(np.transpose(O).dot(H[i]).dot(O))
-        ML[i,:] = s
-
-    POF = np.linalg.pinv(ML).dot(E)
-
-    POF = POF / sum(POF)
-
-    return ML, POF
-
-def Get_DiagM2(X1, X2, X3, k):
-    """
-    From X1, X2 and X3, gets the diagonal of M2
-    @param X1: the first view
-    @param X2: the second view
-    @param X3: the first view
-    @param k: the number of clusters
-    """
-
-    D1 = GetPartial_M2(X3, X2, X1, k)
-    D2 = GetPartial_M2(X1, X3, X2, k)
-    D3 = GetPartial_M2(X1, X2, X3, k)
-
-    return np.concatenate((np.diag(D1),np.diag(D2),np.diag(D3)))
-
-def Get_H(X1, X2, X3, k, pu, H= [], HMin = 0, O = 1):
-    """
-    Get the whitened slices of M3
-    @param X1: the first view
-    @param X2: the second view
-    @param X3: the first view
-    @param k: the number of clusters
-    @param H: the whitened slices of M3
-    @param HMin: the smallest eigengap
-    @param O: the optimal rotation
-    """
-
-    N, n = X3.shape
-
-    P12 = X1.T.dot(X2) / N
-    u, s, v = np.linalg.svd(P12)
-    u = u[:, :k]
-    s = s[:k]
-    v = v[:k,:]
-    A = np.diag(1 / s ** 0.5).dot(u.T)
-    B = (v.T.dot(np.diag(1 / s ** 0.5))).T
-
-    X1A = X1.dot(A.T)
-    X2B = X2.dot(B.T)
-
-    zX3 = X3.dot(pu.T)
-
-    C13 = (X1A).T.dot(zX3) / N
-    C12 = np.linalg.pinv((X1A).T.dot(X2B) / N)
-    C23 = (X2B).T.dot(zX3) / N
-
-    for i in range(n):
-        Y = X3[:, i].reshape((N, 1))
-        D = (X1A * Y).T.dot(X2B) / N
-        wH = C23.T.dot(C12).dot(D).dot(C12).dot(C13)
-        H.append(wH)
-        h,s,v = np.linalg.svd(wH)
+        h, s, v = np.linalg.svd(H[i])
         if np.min(-np.diff(s)) > HMin:
             HMin = np.min(-np.diff(s))
             O = h
 
-    return H, O, HMin
+    for i in range(0, n):
+        s = np.diag(np.transpose(O).dot(H[i]).dot(O))
+        M[i, :] = s
+
+    x = np.linalg.lstsq(M, E)
+    omega = x[0] ** 2
+    omega = omega / sum(omega)
+
+    return M, omega
 
 
-            #P12 = X1.T.dot(X2) / N
-    #u, s, v = randomized_svd(P12, n_components=k, n_iter=5, random_state=None)
 
-def GetPartial_M2(X1, X2, X3, k):
+def numexpr_app(X, a, b):
+    XT = X.T
+    return ne.evaluate('log(XT * b + a)').sum(0)
+
+def EM(X, M, omega, Eps=0.001, verbose = False):
     """
-    From X1, X2 and X3, gets the submatrix of M23
-    @param X1: the first view
-    @param X2: the second view
-    @param X3: the first view
-    @param k: the number of clusters
-    """
-
-    N1,n1 = X1.shape
-
-    N = N1
-
-    P12 = X1.T.dot(X2) / N
-    u, s, v = np.linalg.svd(P12)
-    u = u[:, :k]
-    s = s[:k]
-    v = v[:k,:]
-    A = np.diag(1 / s ** 0.5).dot(u.T)
-    B = (v.T.dot(np.diag(1 / s ** 0.5))).T
-
-    X1A = X1.dot(A.T)
-    X2B = X2.dot(B.T)
-
-    C13 = (X1A).T.dot(X3)/N
-    C12 = (X1A).T.dot(X2B)/N
-    C23 = (X2B).T.dot(X3)/N
-
-    M2 = C13.T.dot(np.linalg.pinv(C12.T)).dot(C23)
-
-    return M2
-
-def PerformClustering(M, X):
-    """
-    Clusters the rows of X accordng to the similarity to the cols of M
+    Implementation of EM to learn a NBM with binary variables
+    @param X: the dataset
     @param M: the centers of the mixture
-    @param X: The dataset
+    @param omega: the mixing weights
+    @param Eps: the stopping criterion
+    @param verbose: wether to show or not the error
     """
-    N,n = X.shape
+
     n,k = M.shape
+    N,n = X.shape
+    it = 1
+    wM = M.copy()
+    womega = omega.copy()
+    womega[womega<0] = 0.000001
+    womega = womega/womega.sum()
+    omega_old = womega.copy()+1
 
-    Dist = np.ones((N,k))
-    Dist[:] = np.inf
+    while np.sum(np.abs(womega-omega_old))>Eps:
+        assignments = np.zeros((N,k))
+        for i in range(k):
+            mu = wM[:,i].reshape(n,1)
+            mu[mu<=0.00000001] = 0.00000001
+            mu[mu>1] = 0.99999
 
-    #Calculates the distance of each row to each center of the mixture
-    for i in range(k):
-        Dist[:,i] = ((X-M[:,i].reshape(1,n))**2).sum(1)
+            a = 1 - mu
+            b = (2 * mu - 1)
 
-    #Calculates the distance of each row to each center of the mixture
-    CL = np.argmin(Dist,1)
+            assignments[:, i] = numexpr_app(X, a, b)+ np.log(womega[i])
 
-    return CL
+        assignments -= np.max(assignments, 1).reshape(len(assignments), 1)
+        assignments = np.exp(assignments)
+        assignments /= np.sum(assignments,1).reshape(N,1)
+        omega_old = womega.copy()
+        womega = np.sum(assignments,0)/np.sum(assignments)
+        if verbose:
+            print(np.sum(np.abs(womega-omega_old)))
+            print(womega)
+        wM = X.T.dot(assignments)/np.sum(assignments,0)
+
+        it+=1
+    return wM,womega,assignments
