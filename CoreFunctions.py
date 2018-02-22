@@ -24,7 +24,7 @@ def NaiveBayesClustering(X,k,Eps = 0.01):
     M,omega = ASVTD(X, k)
 
     #Use the plugs the parameters into EM
-    M, omega, assignment = EM(X,M,omega)
+    M, omega, assignment = EM(X,M,omega, Eps)
     #From EM obtains the clustering
     CL = np.argmax(assignment,1)
 
